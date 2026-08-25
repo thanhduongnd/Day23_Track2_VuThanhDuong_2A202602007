@@ -1,40 +1,54 @@
-# RTO/RPO Evidence — Lab 23 (TEMPLATE — sinh viên điền bằng SỐ CỦA MÌNH)
+# RTO/RPO Evidence — Lab 23
 
-Quy tắc duy nhất: mỗi con số ở đây phải trỏ được về **một dòng log thật**
-(`đường/dẫn.jsonl:số_dòng`). `pytest tests/test_rto_evidence.py` sẽ mở từng file ra kiểm tra.
-Con số không có evidence = trượt, bất kể các phần khác.
+Mọi số liệu dưới đây được lấy từ lần drill ngày 2026-08-25. RTO được đo theo trải
+nghiệm người dùng qua load generator, không lấy từ thời điểm script runbook kết thúc.
 
 ## 1. Drill 1 — không có DR (baseline)
 
 | Chỉ số | Giá trị | Cách đo | Evidence |
-|---|---|---|---|
-| t_outage | `<iso>` | chaos kill | `chaos/chaos-events.jsonl:1` |
-| Request fail đầu tiên | `+__s` | dòng `ok:false` đầu tiên sau t_outage | `reports/drill-1-nodr.jsonl:__` |
-| Request thành công sau đó | không có | không có dòng `ok:true` nào sau t_outage | `reports/measure-drill-1.json` |
-| RTO | `NO_RECOVERY` | `tools/measure_rto.py` | `reports/measure-drill-1.json` |
+|---|---:|---|---|
+| `t_outage` | `2026-08-25T04:57:16Z` | Event `action:kill`, Region A, `netblock` | `chaos/chaos-events.jsonl:1` |
+| Request fail đầu tiên | `+0.3s` | Dòng `ok:false` đầu tiên sau `t_outage` | `reports/drill-1-nodr.jsonl:17` |
+| Request thành công sau đó | Không có | `request_thanh_cong_dau_tien:null` | `reports/measure-drill-1.json:16` |
+| RTO | `NO_RECOVERY` | Không có request thành công nào sau lỗi | `reports/measure-drill-1.json:25` |
+| Tổng request lỗi | `16` | Kết quả đo từ loadgen | `reports/measure-drill-1.json:28` |
 
 ## 2. Drill 2 — có DR
 
-| Mốc | +giây từ t_outage | Cách đo | Evidence |
-|---|---|---|---|
-| t_outage (mốc 0) | 0 | `action:kill` | `chaos/chaos-events.jsonl:__` |
-| User thấy lỗi đầu tiên | | dòng `ok:false` đầu | `reports/drill-2-withdr.jsonl:__` |
-| Health check phát hiện | | `to:UNHEALTHY, region:a` | `reports/health-events.jsonl:__` |
-| Snapshot restore xong | | `step:2_restore_snapshot` | `reports/failover-events.jsonl:__` |
-| Region phụ ready | | `step:4_wait_ready` | `reports/failover-events.jsonl:__` |
-| DNS cutover | | `step:5_dns_cutover` | `reports/failover-events.jsonl:__` |
-| **RTO đo được** | | dòng `ok:true` đầu sau lỗi | `reports/drill-2-withdr.jsonl:__` |
+| Mốc | +giây từ `t_outage` | Cách đo | Evidence |
+|---|---:|---|---|
+| `t_outage` | `0.0s` | Event `action:kill` lúc `2026-08-25T05:17:54Z` | `chaos/chaos-events.jsonl:4` |
+| User thấy lỗi đầu tiên | `0.0s` | Dòng `ok:false` đầu tiên sau outage | `reports/drill-2-withdr.jsonl:25` |
+| Snapshot restore xong | `12.4s` | Timestamp của `2_restore_snapshot` trừ `t_outage` | `reports/failover-events.jsonl:14` |
+| Health check phát hiện | `14.1s` | Region A chuyển sang `UNHEALTHY` sau 3 lỗi liên tiếp | `reports/health-events.jsonl:2` |
+| Region phụ ready | `19.0s` | `4_wait_ready` thành công, Region B có 215 vectors và weights | `reports/failover-events.jsonl:16` |
+| DNS cutover | `19.0s` | `5_dns_cutover`, `active_region:b` | `reports/failover-events.jsonl:17` |
+| **RTO đo được** | **`22.2s`** | Request `ok:true` đầu tiên sau lỗi, được Region B phục vụ | `reports/drill-2-withdr.jsonl:36` |
 
-| Chỉ số | Đo được | Mục tiêu (slide §1) | Verdict |
-|---|---|---|---|
-| RTO — Inference API | `__s` | 300s (5 phút) | |
-| RPO — Vector DB | `__s` / `__` doc | 300s (5 phút) | |
+| Chỉ số | Đo được | Mục tiêu | Verdict | Evidence |
+|---|---:|---:|---|---|
+| RTO — Inference API | `22.2s` | `300s` | **PASS**, thấp hơn mục tiêu `277.8s` | `reports/measure-drill-2.json:20` |
+| RPO — Vector DB | `2.02s / 1 doc` | `300s` | **PASS**, thấp hơn mục tiêu `297.98s` | `reports/failover-events.jsonl:14` |
+| Drill hợp lệ | `valid:true`, `warnings:[]` | Bắt buộc | **PASS** | `reports/measure-drill-2.json:2` |
+| Region phục hồi | `b` | Khác Region A đã bị kill | **PASS** | `reports/measure-drill-2.json:6` |
 
-## 3. RTO của tôi gồm những gì (bắt buộc — đây là phần chấm điểm hiểu bài)
+## 3. Phân rã RTO theo critical path
 
-| Thành phần | Giây | Nó đến từ đâu | Giảm được bằng cách nào |
-|---|---|---|---|
-| Health-check detect floor | | `interval_s × threshold` trong `reports/health-events.jsonl:__` | |
-| Snapshot restore | | 2_restore → 3_scale | |
-| GPU pool warm-up | | `waited_s` ở `4_wait_ready` | |
-| DNS/LB TTL cache | | t_recovered − t_cutover | |
+Health checker và runbook xác nhận outage chạy song song trong drill này. Snapshot đã
+restore xong ở `+12.4s`, trước khi health checker phát event ở `+14.1s`. Vì vậy cộng
+thẳng mọi wall-clock duration sẽ đếm trùng phần chạy song song. Cột “đóng góp” dưới
+đây chỉ tính thời gian nằm trên critical path của request người dùng.
+
+| Thành phần | Thời gian thô | Đóng góp vào RTO | Nó đến từ đâu | Giảm được bằng cách nào |
+|---|---:|---:|---|---|
+| Health-check detection | `14.08s`; cấu hình floor `5s × 3 = 15s` | `14.08s` | `interval_s:5`, `threshold:3`; phase của poll làm số đo thực tế lệch dưới 1 giây so với floor | Giảm interval có kiểm soát, giữ threshold để chống flapping. Evidence: `reports/health-events.jsonl:2` |
+| Snapshot restore | `0.09s` | `0.00s` | Từ `1_verify_target` tới `2_restore_snapshot`; hoàn thành trong lúc detection còn chạy | Replicate thường xuyên hơn để giảm RPO; pre-stage snapshot ở target. Evidence: `reports/failover-events.jsonl:13`, `reports/failover-events.jsonl:14` |
+| GPU pool warm-up | `6.40s` | `4.89s` | `waited_s:6.401`; khoảng `1.51s` đầu overlap với detection | Giữ một pool warm/full tối thiểu hoặc pre-warm khi alert bắt đầu. Evidence: `reports/failover-events.jsonl:16` |
+| DNS/LB TTL cache | `3.20s` | `3.20s` | Request phục hồi lúc `+22.2s` trừ cutover lúc `+19.0s` | Giảm TTL hoặc dùng LB health routing trực tiếp. Evidence: `reports/failover-events.jsonl:17`, `reports/drill-2-withdr.jsonl:36` |
+| **Tổng critical path** |  | **`22.17s ≈ 22.2s`** | `14.08 + 0.00 + 4.89 + 3.20` | Khớp kết quả đo ở `reports/measure-drill-2.json:20` |
+
+## 4. Kết luận
+
+Drill tạo ra 11 request lỗi trước khi phục hồi. Region B phục vụ request thành công
+đầu tiên sau `22.2s`; snapshot làm mất 1 document tương ứng `2.02s`. Cả RTO và RPO
+đều đạt mục tiêu 300 giây, và công cụ đo không phát hiện warning hay điều kiện invalid.

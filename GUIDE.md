@@ -8,7 +8,7 @@
 4. [Step 1 — Baseline](#step-1--baseline-15-min)
 5. [Step 2 — Red Team](#step-2--red-team-25-min)
 6. [Step 3 — Containment](#step-3--containment-50-min)
-7. [Step 4 — Prove & Collect Evidence](#step-4--prove--collect-evidence-20-min)
+7. [Step 4 — Prove &amp; Collect Evidence](#step-4--prove--collect-evidence-20-min)
 8. [Common Pitfalls](#common-pitfalls)
 9. [Troubleshooting](#troubleshooting)
 10. [Stretch Goals](#stretch-goals)
@@ -27,13 +27,13 @@ Everything runs locally: two FastAPI processes stand in for two regions, SQLite 
 
 ## Timeline
 
-| Step | Duration | Focus | Slide reference |
-|---|---:|---|---|
-| 0. Setup | 10 min | Install deps, seed state, bring the stack up | — |
-| 1. Baseline | 15 min | Trace the request path; inspect Region B | §1 RTO/RPO Fundamentals |
-| 2. Red Team | 25 min | Kill Region A while serving live traffic | §1 Case Study · §4 Anti-Patterns |
-| 3. Containment | 50 min | Implement health check, failover, runbook | §2 Multi-Region Patterns · §3 State Recovery · §4 Failover Automation |
-| 4. Prove | 20 min | Re-attack, measure RTO/RPO, write evidence | §4 Runbook & Postmortem · §6 Game Day |
+| Step           | Duration | Focus                                        | Slide reference                                                            |
+| -------------- | -------: | -------------------------------------------- | -------------------------------------------------------------------------- |
+| 0. Setup       |   10 min | Install deps, seed state, bring the stack up | —                                                                         |
+| 1. Baseline    |   15 min | Trace the request path; inspect Region B     | §1 RTO/RPO Fundamentals                                                   |
+| 2. Red Team    |   25 min | Kill Region A while serving live traffic     | §1 Case Study · §4 Anti-Patterns                                        |
+| 3. Containment |   50 min | Implement health check, failover, runbook    | §2 Multi-Region Patterns · §3 State Recovery · §4 Failover Automation |
+| 4. Prove       |   20 min | Re-attack, measure RTO/RPO, write evidence   | §4 Runbook & Postmortem · §6 Game Day                                   |
 
 ---
 
@@ -133,13 +133,13 @@ pytest tests/test_failover.py::test_health_checker_can_threshold_lien_tiep
 
 Implement exactly these five steps, in this order:
 
-| # | Step | What it does |
-|---|---|---|
-| 1 | `1_verify_target` | Check current state of the target region |
-| 2 | `2_restore_snapshot` | Restore via `state/snapshot.py`; log `rpo_seconds`, `docs_lost`, `embed_model_version` |
-| 3 | `3_scale_pool` | Flip target's pool state to `full` |
-| 4 | `4_wait_ready` | Poll `/readyz` until it returns 200 |
-| 5 | `5_dns_cutover` | Only now, write the target region into `edge/active_region` |
+| # | Step                   | What it does                                                                                  |
+| - | ---------------------- | --------------------------------------------------------------------------------------------- |
+| 1 | `1_verify_target`    | Check current state of the target region                                                      |
+| 2 | `2_restore_snapshot` | Restore via`state/snapshot.py`; log `rpo_seconds`, `docs_lost`, `embed_model_version` |
+| 3 | `3_scale_pool`       | Flip target's pool state to`full`                                                           |
+| 4 | `4_wait_ready`       | Poll`/readyz` until it returns 200                                                          |
+| 5 | `5_dns_cutover`      | Only now, write the target region into`edge/active_region`                                  |
 
 > If step 4 times out, **abort** — do not cut over. Flipping DNS before the target is actually ready means users get 503s from *both* regions, which lengthens RTO instead of shortening it.
 
@@ -184,14 +184,14 @@ python3 tools/measure_rto.py --loadgen reports/drill-2-withdr.jsonl --target-rto
 
 The table below is from **one** reference run — an illustration of what the output looks like, not a target to copy:
 
-| Milestone (from `t_outage`) | +seconds | Evidence |
-|---|---:|---|
-| User sees first error | 0.2 | `reports/drill-2-withdr.jsonl:25` |
-| Health check flags Region A `UNHEALTHY` | 14.9 | `reports/health-events.jsonl:3` |
-| Snapshot restore complete | 17.2 | `reports/failover-events.jsonl:2` |
-| Region B ready | 23.3 | `reports/failover-events.jsonl:4` |
-| DNS cutover | 23.4 | `reports/failover-events.jsonl:5` |
-| First successful request from B | **28.5** | `reports/drill-2-withdr.jsonl:39` |
+| Milestone (from`t_outage`)             |       +seconds | Evidence                            |
+| ---------------------------------------- | -------------: | ----------------------------------- |
+| User sees first error                    |            0.2 | `reports/drill-2-withdr.jsonl:25` |
+| Health check flags Region A`UNHEALTHY` |           14.9 | `reports/health-events.jsonl:3`   |
+| Snapshot restore complete                |           17.2 | `reports/failover-events.jsonl:2` |
+| Region B ready                           |           23.3 | `reports/failover-events.jsonl:4` |
+| DNS cutover                              |           23.4 | `reports/failover-events.jsonl:5` |
+| First successful request from B          | **28.5** | `reports/drill-2-withdr.jsonl:39` |
 
 RTO = 28.5s vs. a 300s target → **PASS**. RPO in that run was 14.04s / 7 documents lost; a separate run measured 4.01s / 2 documents. **RPO is expected to vary** — it depends on exactly where the last `state/replicate.py` cycle landed relative to the restore. RTO is much more stable across runs (typically 28.3–28.6s). Do not copy either sample number into your own report.
 
@@ -223,18 +223,18 @@ python3 -m pytest tests/ -v
 
 ## Common Pitfalls
 
-| Pitfall | Fix |
-|---|---|
-| No Docker available | Use `bash scripts/up_bare.sh` — this is the primary path, not a fallback. |
-| MinIO setup eats your time budget | Use `--backend fs` (snapshots land under `state/_replica/`). MinIO is a stretch goal only. |
-| Killing both regions at once | The chaos script refuses this by default. `--i-really-want-both` forces it but marks the drill `INVALID`. |
-| Measuring RTO "by feel" | Only timestamps from `loadgen/traffic.py` count. The kill event must fall inside the load generator's own time window. |
-| Forgetting the detection floor | `interval_s × threshold` must appear as its own line in your RTO breakdown — it's not optional. |
-| Manually editing `edge/active_region` | `measure_rto.py` flags it if `t_cutover < t_detect`, and `test_drill2_hop_le` rejects any warnings. Re-run the automated drill instead. |
-| Assuming warm-up starts at process boot | `serving/app.py` only starts the warm-up timer when `pool_state` changes *while running*. Don't patch `serving/` to dodge this. |
-| Confusing `netblock` with a dead process | In bare mode, `netblock` is `SIGSTOP` (process paused, not killed). Restore with `restore --region a --backend bare`. `stop` is the one that actually kills it (`SIGKILL`). |
-| Calling `failover.py` before any snapshot exists | Start `state/replicate.py` and wait for its first `put` — otherwise `state/snapshot.py get` fails at `2_restore_snapshot`. |
-| Using Docker mode for the graded drill | `--backend docker` works, but timing depends on your machine and Docker daemon — not reproducible. Grading always uses bare `--mock`. |
+| Pitfall                                           | Fix                                                                                                                                                                                  |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| No Docker available                               | Use`bash scripts/up_bare.sh` — this is the primary path, not a fallback.                                                                                                          |
+| MinIO setup eats your time budget                 | Use`--backend fs` (snapshots land under `state/_replica/`). MinIO is a stretch goal only.                                                                                        |
+| Killing both regions at once                      | The chaos script refuses this by default.`--i-really-want-both` forces it but marks the drill `INVALID`.                                                                         |
+| Measuring RTO "by feel"                           | Only timestamps from`loadgen/traffic.py` count. The kill event must fall inside the load generator's own time window.                                                              |
+| Forgetting the detection floor                    | `interval_s × threshold` must appear as its own line in your RTO breakdown — it's not optional.                                                                                  |
+| Manually editing`edge/active_region`            | `measure_rto.py` flags it if `t_cutover < t_detect`, and `test_drill2_hop_le` rejects any warnings. Re-run the automated drill instead.                                        |
+| Assuming warm-up starts at process boot           | `serving/app.py` only starts the warm-up timer when `pool_state` changes *while running*. Don't patch `serving/` to dodge this.                                              |
+| Confusing`netblock` with a dead process         | In bare mode,`netblock` is `SIGSTOP` (process paused, not killed). Restore with `restore --region a --backend bare`. `stop` is the one that actually kills it (`SIGKILL`). |
+| Calling`failover.py` before any snapshot exists | Start`state/replicate.py` and wait for its first `put` — otherwise `state/snapshot.py get` fails at `2_restore_snapshot`.                                                   |
+| Using Docker mode for the graded drill            | `--backend docker` works, but timing depends on your machine and Docker daemon — not reproducible. Grading always uses bare `--mock`.                                           |
 
 ## Troubleshooting
 
